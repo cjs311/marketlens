@@ -1,4 +1,4 @@
-"""Overview and historical-market-data page for MarketLens."""
+"""Market data and portfolio-performance overview for MarketLens."""
 
 from datetime import date, timedelta
 
@@ -10,6 +10,12 @@ from src.data_loader import (
     MarketDataError,
     MarketDataResult,
     download_market_data,
+)
+from src.portfolio import (
+    PortfolioCalculationError,
+    calculate_portfolio_analytics,
+    create_equal_weights,
+    validate_weights,
 )
 from src.validation import (
     InputValidationError,
@@ -39,12 +45,17 @@ def load_cached_market_data(
     )
 
 
+def format_percentage(value: float) -> str:
+    """Format a decimal as a signed percentage."""
+    return f"{value:+.2%}"
+
+
 st.title("📈 MarketLens")
 st.caption("Market-risk and portfolio-analytics dashboard")
 
 st.info(
-    "Day 2 adds real adjusted historical prices and market-data validation. "
-    "Portfolio returns, weights, and risk metrics begin on Day 3."
+    "Day 3 adds editable portfolio weights, daily weighted returns, "
+    "and real portfolio-versus-benchmark performance analytics."
 )
 
 today = date.today()
@@ -83,7 +94,10 @@ with st.form("market_data_form"):
         benchmark_input = st.text_input(
             "Benchmark",
             value="SPY",
-            help="The benchmark is downloaded and aligned with the portfolio assets.",
+            help=(
+                "The benchmark is aligned to the same dates as the "
+                "portfolio assets."
+            ),
         )
 
     submitted = st.form_submit_button(
@@ -93,19 +107,34 @@ with st.form("market_data_form"):
     )
 
 if submitted:
-    st.session_state.pop("market_data_result", None)
-    st.session_state.pop("market_data_config", None)
+    for state_key in (
+        "market_data_result",
+        "market_data_config",
+        "portfolio_signature",
+        "portfolio_weights",
+        "portfolio_analytics",
+    ):
+        st.session_state.pop(
+            state_key,
+            None,
+        )
 
     try:
-        asset_tickers = parse_ticker_input(ticker_input)
-        benchmark = parse_benchmark(benchmark_input)
+        asset_tickers = parse_ticker_input(
+            ticker_input
+        )
+        benchmark = parse_benchmark(
+            benchmark_input
+        )
 
         validate_date_range(
             start_date,
             end_date,
         )
 
-        with st.spinner("Downloading and validating adjusted prices..."):
+        with st.spinner(
+            "Downloading and validating adjusted prices..."
+        ):
             market_data_result = load_cached_market_data(
                 asset_tickers=asset_tickers,
                 benchmark=benchmark,
@@ -113,11 +142,19 @@ if submitted:
                 end_date=end_date,
             )
 
-    except (InputValidationError, MarketDataError) as error:
+    except (
+        InputValidationError,
+        MarketDataError,
+    ) as error:
         st.error(str(error))
     else:
-        st.session_state["market_data_result"] = market_data_result
-        st.session_state["market_data_config"] = {
+        st.session_state[
+            "market_data_result"
+        ] = market_data_result
+
+        st.session_state[
+            "market_data_config"
+        ] = {
             "asset_tickers": asset_tickers,
             "benchmark": benchmark,
             "start_date": start_date,
@@ -126,8 +163,8 @@ if submitted:
 
         st.success(
             "Loaded "
-            f"{market_data_result.rows_after_alignment:,} aligned trading days "
-            f"from {market_data_result.actual_start:%b %d, %Y} through "
+            f"{market_data_result.rows_after_alignment:,} aligned trading "
+            f"days from {market_data_result.actual_start:%b %d, %Y} through "
             f"{market_data_result.actual_end:%b %d, %Y}."
         )
 
@@ -138,22 +175,18 @@ market_data_config = st.session_state.get(
     "market_data_config"
 )
 
-if market_data_result is None or market_data_config is None:
+if (
+    market_data_result is None
+    or market_data_config is None
+):
     st.divider()
     st.subheader("Ready to load market data")
 
     st.markdown(
         """
-        Select your assets, benchmark, and historical period, and then choose
-        **Load market data**.
-
-        MarketLens will:
-
-        - Validate the ticker format.
-        - Download adjusted daily closing prices.
-        - Confirm that every ticker returned usable history.
-        - Align all securities to common trading dates.
-        - Report missing observations instead of hiding them.
+        Select the assets, benchmark, and analysis period. MarketLens will
+        validate the inputs, download adjusted prices, and align every security
+        to common trading dates.
         """
     )
 
@@ -165,119 +198,357 @@ if market_data_result is None or market_data_config is None:
     st.stop()
 
 prices = market_data_result.prices
-asset_tickers = market_data_config["asset_tickers"]
-benchmark = market_data_config["benchmark"]
+asset_tickers = market_data_config[
+    "asset_tickers"
+]
+benchmark = market_data_config[
+    "benchmark"
+]
 
 st.divider()
 st.subheader("Loaded dataset")
 
-summary_columns = st.columns(4)
+dataset_columns = st.columns(4)
 
-with summary_columns[0]:
+with dataset_columns[0]:
     st.metric(
-        "Securities loaded",
-        len(prices.columns),
+        "Portfolio assets",
+        len(asset_tickers),
     )
 
-with summary_columns[1]:
+with dataset_columns[1]:
+    st.metric(
+        "Benchmark",
+        benchmark,
+    )
+
+with dataset_columns[2]:
     st.metric(
         "Aligned trading days",
         f"{len(prices):,}",
     )
 
-with summary_columns[2]:
+with dataset_columns[3]:
     st.metric(
-        "First usable date",
-        market_data_result.actual_start.strftime("%b %d, %Y"),
-    )
-
-with summary_columns[3]:
-    st.metric(
-        "Last usable date",
-        market_data_result.actual_end.strftime("%b %d, %Y"),
+        "Usable period",
+        (
+            f"{market_data_result.actual_start:%b %d, %Y} – "
+            f"{market_data_result.actual_end:%b %d, %Y}"
+        ),
     )
 
 if market_data_result.dropped_rows > 0:
     st.warning(
-        f"{market_data_result.dropped_rows:,} date rows were removed because "
-        "at least one requested security had a missing adjusted price. "
-        "Portfolio calculations require the assets to use common dates."
+        f"{market_data_result.dropped_rows:,} rows were removed because at "
+        "least one requested security had a missing adjusted price."
     )
 else:
     st.success(
-        "No date rows were removed during cross-asset alignment."
+        "No dates were removed during cross-asset alignment."
     )
 
-st.subheader("Normalized security performance")
-
-normalized_prices = (
-    prices
-    .divide(prices.iloc[0])
-    .multiply(100.0)
+portfolio_signature = "|".join(
+    (
+        *asset_tickers,
+        f"benchmark={benchmark}",
+        f"start={market_data_result.actual_start}",
+        f"end={market_data_result.actual_end}",
+    )
 )
 
-display_names: dict[str, str] = {}
+if (
+    st.session_state.get(
+        "portfolio_signature"
+    )
+    != portfolio_signature
+):
+    default_weights = create_equal_weights(
+        asset_tickers
+    )
 
-for ticker in normalized_prices.columns:
-    if ticker == benchmark and ticker in asset_tickers:
-        display_names[ticker] = f"{ticker} (asset and benchmark)"
-    elif ticker == benchmark:
-        display_names[ticker] = f"{ticker} (benchmark)"
+    default_analytics = calculate_portfolio_analytics(
+        prices=prices,
+        asset_tickers=asset_tickers,
+        benchmark=benchmark,
+        weights=default_weights,
+    )
+
+    st.session_state[
+        "portfolio_signature"
+    ] = portfolio_signature
+
+    st.session_state[
+        "portfolio_weights"
+    ] = default_weights
+
+    st.session_state[
+        "portfolio_analytics"
+    ] = default_analytics
+
+current_weights = st.session_state[
+    "portfolio_weights"
+]
+
+st.divider()
+st.subheader("Portfolio weights")
+
+st.caption(
+    "Enter target percentages for the selected portfolio assets. "
+    "MarketLens currently supports long-only weights."
+)
+
+weight_editor_data = pd.DataFrame(
+    {
+        "Ticker": list(asset_tickers),
+        "Weight (%)": [
+            float(
+                current_weights[ticker]
+                * 100.0
+            )
+            for ticker in asset_tickers
+        ],
+    }
+)
+
+editor_key = (
+    "weight_editor_"
+    + portfolio_signature
+)
+
+with st.form(
+    "portfolio_weight_form_"
+    + portfolio_signature
+):
+    edited_weights = st.data_editor(
+        weight_editor_data,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        disabled=["Ticker"],
+        key=editor_key,
+        column_config={
+            "Ticker": st.column_config.TextColumn(
+                "Ticker",
+                help="Portfolio asset symbol",
+            ),
+            "Weight (%)": st.column_config.NumberColumn(
+                "Weight (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=0.5,
+                format="%.2f",
+                help="Target percentage allocated to this asset",
+            ),
+        },
+    )
+
+    normalize_requested = st.checkbox(
+        "Automatically normalize entered weights to 100%",
+        value=True,
+        help=(
+            "For example, weights of 60 and 20 would be proportionally "
+            "converted to 75% and 25%."
+        ),
+    )
+
+    apply_weights = st.form_submit_button(
+        "Apply portfolio weights",
+        type="primary",
+        use_container_width=True,
+    )
+
+if apply_weights:
+    raw_weight_percentages = pd.Series(
+        edited_weights[
+            "Weight (%)"
+        ].to_numpy(),
+        index=edited_weights[
+            "Ticker"
+        ].astype(str),
+        dtype="float64",
+    )
+
+    raw_decimal_weights = (
+        raw_weight_percentages
+        / 100.0
+    )
+
+    try:
+        validated_weights = validate_weights(
+            raw_weights=raw_decimal_weights,
+            asset_tickers=asset_tickers,
+            normalize=normalize_requested,
+        )
+
+        portfolio_analytics = calculate_portfolio_analytics(
+            prices=prices,
+            asset_tickers=asset_tickers,
+            benchmark=benchmark,
+            weights=validated_weights,
+        )
+
+    except PortfolioCalculationError as error:
+        st.error(str(error))
     else:
-        display_names[ticker] = ticker
+        st.session_state[
+            "portfolio_weights"
+        ] = validated_weights
 
-chart_data = (
-    normalized_prices
-    .rename(columns=display_names)
+        st.session_state[
+            "portfolio_analytics"
+        ] = portfolio_analytics
+
+        current_weights = validated_weights
+
+
+        st.success(
+            "Portfolio weights applied. Final allocation totals 100%."
+        )
+
+portfolio_analytics = st.session_state[
+    "portfolio_analytics"
+]
+current_weights = portfolio_analytics.weights
+metrics = portfolio_analytics.metrics
+
+allocation_table = pd.DataFrame(
+    {
+        "Ticker": current_weights.index,
+        "Weight": [
+            f"{value:.2%}"
+            for value in current_weights
+        ],
+    }
+)
+
+st.dataframe(
+    allocation_table,
+    hide_index=True,
+    use_container_width=True,
+)
+
+st.caption(
+    "Calculation assumption: the selected target weights are applied to every "
+    "daily return, representing daily rebalancing. Transaction costs, taxes, "
+    "slippage, and management fees are not included."
+)
+
+st.divider()
+st.subheader("Portfolio performance")
+
+portfolio_total_return = float(
+    metrics.loc[
+        "Portfolio",
+        "total_return",
+    ]
+)
+benchmark_total_return = float(
+    metrics.loc[
+        "Benchmark",
+        "total_return",
+    ]
+)
+
+portfolio_annualized_return = float(
+    metrics.loc[
+        "Portfolio",
+        "annualized_return",
+    ]
+)
+benchmark_annualized_return = float(
+    metrics.loc[
+        "Benchmark",
+        "annualized_return",
+    ]
+)
+
+portfolio_volatility = float(
+    metrics.loc[
+        "Portfolio",
+        "annualized_volatility",
+    ]
+)
+
+metric_columns = st.columns(4)
+
+with metric_columns[0]:
+    st.metric(
+        "Portfolio total return",
+        f"{portfolio_total_return:.2%}",
+        delta=(
+            f"{portfolio_total_return - benchmark_total_return:+.2%} "
+            "vs benchmark"
+        ),
+    )
+
+with metric_columns[1]:
+    st.metric(
+        "Portfolio annualized return",
+        f"{portfolio_annualized_return:.2%}",
+        delta=(
+            f"{portfolio_annualized_return - benchmark_annualized_return:+.2%} "
+            "vs benchmark"
+        ),
+    )
+
+with metric_columns[2]:
+    st.metric(
+        "Portfolio annualized volatility",
+        f"{portfolio_volatility:.2%}",
+    )
+
+with metric_columns[3]:
+    st.metric(
+        f"{benchmark} total return",
+        f"{benchmark_total_return:.2%}",
+    )
+
+performance_chart_data = (
+    portfolio_analytics.performance_index
     .rename_axis("Date")
     .reset_index()
     .melt(
         id_vars="Date",
-        var_name="Security",
-        value_name="Normalized value",
+        var_name="Series",
+        value_name="Growth of 100",
     )
 )
 
 performance_figure = px.line(
-    chart_data,
+    performance_chart_data,
     x="Date",
-    y="Normalized value",
-    color="Security",
-    color_discrete_sequence=[
-        "#34D399",
-        "#60A5FA",
-        "#A78BFA",
-        "#F59E0B",
-        "#F87171",
-        "#22D3EE",
-        "#FB7185",
-        "#A3E635",
-        "#C084FC",
-        "#FBBF24",
-        "#94A3B8",
-    ],
+    y="Growth of 100",
+    color="Series",
+    color_discrete_map={
+        "Portfolio": "#34D399",
+        "Benchmark": "#94A3B8",
+    },
 )
 
 performance_figure.update_traces(
-    line={"width": 2.4},
+    line={"width": 2.6},
     hovertemplate=(
         "%{x|%b %d, %Y}<br>"
-        "Normalized value: %{y:.2f}"
+        "Value: %{y:.2f}"
         "<extra>%{fullData.name}</extra>"
     ),
 )
 
 performance_figure.update_layout(
     title=(
-        "Adjusted Prices Indexed to 100 "
-        f"({market_data_result.actual_start} to "
-        f"{market_data_result.actual_end})"
+        "Growth of 100: Portfolio vs "
+        f"{benchmark}"
     ),
     xaxis_title="Date",
-    yaxis_title="Normalized value",
+    yaxis_title="Growth of 100",
     hovermode="x unified",
     height=475,
-    margin={"l": 20, "r": 20, "t": 65, "b": 20},
+    margin={
+        "l": 20,
+        "r": 20,
+        "t": 65,
+        "b": 20,
+    },
     legend_title_text="",
 )
 
@@ -287,60 +558,183 @@ st.plotly_chart(
 )
 
 st.caption(
-    "Each security begins at 100 so historical price movements can be compared "
-    "on a common scale. This does not yet represent a weighted portfolio."
+    "Both series begin at 100. Portfolio performance compounds the selected "
+    "weighted daily asset returns."
 )
 
-st.subheader("Security summary")
-
-security_summary_rows: list[dict[str, object]] = []
-
-for ticker in prices.columns:
-    if ticker == benchmark and ticker in asset_tickers:
-        role = "Portfolio asset and benchmark"
-    elif ticker == benchmark:
-        role = "Benchmark"
-    else:
-        role = "Portfolio asset"
-
-    security_summary_rows.append(
-        {
-            "Ticker": ticker,
-            "Role": role,
-            "First adjusted close": prices[ticker].iloc[0],
-            "Latest adjusted close": prices[ticker].iloc[-1],
-            "Aligned observations": int(prices[ticker].count()),
-            "Missing before alignment": (
-                market_data_result.missing_values[ticker]
+comparison_table = pd.DataFrame(
+    {
+        "Series": [
+            "Portfolio",
+            f"Benchmark ({benchmark})",
+        ],
+        "Total return": [
+            format_percentage(
+                portfolio_total_return
             ),
-        }
-    )
-
-security_summary = pd.DataFrame(
-    security_summary_rows
+            format_percentage(
+                benchmark_total_return
+            ),
+        ],
+        "Annualized return": [
+            format_percentage(
+                portfolio_annualized_return
+            ),
+            format_percentage(
+                benchmark_annualized_return
+            ),
+        ],
+        "Annualized volatility": [
+            format_percentage(
+                float(
+                    metrics.loc[
+                        "Portfolio",
+                        "annualized_volatility",
+                    ]
+                )
+            ),
+            format_percentage(
+                float(
+                    metrics.loc[
+                        "Benchmark",
+                        "annualized_volatility",
+                    ]
+                )
+            ),
+        ],
+        "Best day": [
+            format_percentage(
+                float(
+                    metrics.loc[
+                        "Portfolio",
+                        "best_day",
+                    ]
+                )
+            ),
+            format_percentage(
+                float(
+                    metrics.loc[
+                        "Benchmark",
+                        "best_day",
+                    ]
+                )
+            ),
+        ],
+        "Worst day": [
+            format_percentage(
+                float(
+                    metrics.loc[
+                        "Portfolio",
+                        "worst_day",
+                    ]
+                )
+            ),
+            format_percentage(
+                float(
+                    metrics.loc[
+                        "Benchmark",
+                        "worst_day",
+                    ]
+                )
+            ),
+        ],
+    }
 )
 
 st.dataframe(
-    security_summary,
+    comparison_table,
     hide_index=True,
     use_container_width=True,
-    column_config={
-        "First adjusted close": st.column_config.NumberColumn(
-            format="%.2f"
-        ),
-        "Latest adjusted close": st.column_config.NumberColumn(
-            format="%.2f"
-        ),
-        "Aligned observations": st.column_config.NumberColumn(
-            format="%d"
-        ),
-        "Missing before alignment": st.column_config.NumberColumn(
-            format="%d"
-        ),
-    },
 )
 
-with st.expander("Data-quality details"):
+with st.expander(
+    "Daily return history and export"
+):
+    daily_return_history = (
+        portfolio_analytics.asset_returns
+        .add_suffix(" asset return")
+    )
+
+    daily_return_history[
+        "Portfolio return"
+    ] = portfolio_analytics.portfolio_returns
+
+    daily_return_history[
+        f"{benchmark} benchmark return"
+    ] = portfolio_analytics.benchmark_returns
+
+    st.dataframe(
+        daily_return_history
+        .sort_index(ascending=False),
+        use_container_width=True,
+        height=420,
+        column_config={
+            column: st.column_config.NumberColumn(
+                column,
+                format="%.4f",
+            )
+            for column in daily_return_history.columns
+        },
+    )
+
+    return_csv = (
+        daily_return_history
+        .rename_axis("Date")
+        .to_csv()
+        .encode("utf-8")
+    )
+
+    st.download_button(
+        label="Download daily returns as CSV",
+        data=return_csv,
+        file_name=(
+            "marketlens_daily_returns_"
+            f"{market_data_result.actual_start}_"
+            f"{market_data_result.actual_end}.csv"
+        ),
+        mime="text/csv",
+    )
+
+with st.expander(
+    "Underlying security performance and data quality"
+):
+    normalized_prices = (
+        prices
+        .divide(prices.iloc[0])
+        .multiply(100.0)
+    )
+
+    normalized_chart_data = (
+        normalized_prices
+        .rename_axis("Date")
+        .reset_index()
+        .melt(
+            id_vars="Date",
+            var_name="Security",
+            value_name="Normalized value",
+        )
+    )
+
+    normalized_figure = px.line(
+        normalized_chart_data,
+        x="Date",
+        y="Normalized value",
+        color="Security",
+    )
+
+    normalized_figure.update_layout(
+        title="Individual Adjusted Prices Indexed to 100",
+        xaxis_title="Date",
+        yaxis_title="Normalized value",
+        hovermode="x unified",
+        height=425,
+    )
+
+    st.plotly_chart(
+        normalized_figure,
+        use_container_width=True,
+    )
+
     quality_columns = st.columns(3)
 
     with quality_columns[0]:
@@ -361,65 +755,41 @@ with st.expander("Data-quality details"):
             f"{market_data_result.dropped_rows:,}",
         )
 
-    st.write(
-        "**Requested period:** "
-        f"{market_data_result.requested_start} through "
-        f"{market_data_result.requested_end}"
+    st.dataframe(
+        prices.sort_index(
+            ascending=False
+        ),
+        use_container_width=True,
+        height=350,
+        column_config={
+            ticker: st.column_config.NumberColumn(
+                ticker,
+                format="%.2f",
+            )
+            for ticker in prices.columns
+        },
     )
 
-    st.write(
-        "**Actual common-data period:** "
-        f"{market_data_result.actual_start} through "
-        f"{market_data_result.actual_end}"
+    price_csv = (
+        prices
+        .rename_axis("Date")
+        .to_csv()
+        .encode("utf-8")
     )
 
-    st.caption(
-        "The actual period can differ because weekends, exchange holidays, "
-        "listing dates, and missing source observations do not produce usable "
-        "daily prices."
+    st.download_button(
+        label="Download adjusted prices as CSV",
+        data=price_csv,
+        file_name=(
+            "marketlens_adjusted_prices_"
+            f"{market_data_result.actual_start}_"
+            f"{market_data_result.actual_end}.csv"
+        ),
+        mime="text/csv",
     )
-
-st.subheader("Adjusted closing-price history")
-
-display_history = (
-    prices
-    .sort_index(ascending=False)
-    .rename_axis("Date")
-)
-
-st.dataframe(
-    display_history,
-    use_container_width=True,
-    height=420,
-    column_config={
-        ticker: st.column_config.NumberColumn(
-            ticker,
-            format="%.2f",
-        )
-        for ticker in display_history.columns
-    },
-)
-
-csv_data = (
-    prices
-    .rename_axis("Date")
-    .to_csv()
-    .encode("utf-8")
-)
-
-st.download_button(
-    label="Download adjusted prices as CSV",
-    data=csv_data,
-    file_name=(
-        "marketlens_adjusted_prices_"
-        f"{market_data_result.actual_start}_"
-        f"{market_data_result.actual_end}.csv"
-    ),
-    mime="text/csv",
-)
 
 st.warning(
-    "MarketLens currently uses yfinance for educational historical-data "
-    "access. Data may be delayed, incomplete, adjusted, or unavailable. "
-    "This page does not provide investment advice."
+    "MarketLens is an educational analytics project. Historical performance "
+    "does not guarantee future results, and this dashboard does not provide "
+    "personalized investment advice."
 )
