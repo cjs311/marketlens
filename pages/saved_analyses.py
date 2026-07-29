@@ -2,10 +2,17 @@
 
 import streamlit as st
 
+from src.ui import page_header
 
-st.title("💾 Saved Analyses")
-st.caption("Save, reload, review, and delete portfolio analyses")
-
+page_header(
+    eyebrow="ANALYSIS LIBRARY",
+    title="Keep your portfolio research organized.",
+    description=(
+        "Save, reload, review, and manage portfolio analyses from one "
+        "central research library."
+    ),
+    badge="PERSISTENCE ROADMAP",
+)
 st.info(
     "SQLite persistence will be implemented during the database phase. "
     "No analyses have been saved yet."

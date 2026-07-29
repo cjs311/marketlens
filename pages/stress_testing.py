@@ -10,7 +10,7 @@ from src.stress import (
     calculate_scenario_comparison,
     calculate_stress_test,
 )
-
+from src.ui import page_header
 
 def format_percentage(
     value: float,
@@ -26,10 +26,14 @@ def format_currency(
     return f"${value:,.2f}"
 
 
-st.title("🧯 Portfolio Stress Testing")
-
-st.caption(
-    "Model portfolio behavior under historical-inspired and custom market shocks"
+page_header(
+    eyebrow="SCENARIO LAB",
+    title="Pressure-test the portfolio.",
+    description=(
+        "Model historical-inspired and custom market shocks, adjust asset "
+        "sensitivities, and estimate losses before they happen."
+    ),
+    badge="INTERACTIVE MODEL",
 )
 
 portfolio_analytics = st.session_state.get(

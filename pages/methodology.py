@@ -2,10 +2,17 @@
 
 import streamlit as st
 
+from src.ui import page_header
 
-st.title("📘 Methodology")
-st.caption("How MarketLens will calculate and interpret portfolio analytics")
-
+page_header(
+    eyebrow="MODEL DOCUMENTATION",
+    title="Understand every calculation.",
+    description=(
+        "Review the assumptions, methods, data limitations, and risk-model "
+        "boundaries behind MarketLens portfolio analytics."
+    ),
+    badge="METHODS & LIMITATIONS",
+)
 st.markdown(
     """
     MarketLens is an educational market-risk and portfolio-analytics tool.
@@ -28,7 +35,7 @@ with st.expander("Risk-adjusted performance"):
     st.markdown(
         """
         - The risk-free rate will be configurable.
-        - The initial default will be **2.0% annually**.
+        - The initial default will be **0.0% annually**.
         - This is a documented model assumption, not a claim about the
           current market risk-free rate.
         - Sharpe ratio will use total volatility.

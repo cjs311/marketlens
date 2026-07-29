@@ -10,7 +10,7 @@ from src.composition import (
     CompositionCalculationError,
     calculate_composition_analytics,
 )
-
+from src.ui import page_header
 
 def format_percentage(value: float) -> str:
     """Format a decimal percentage or return N/A."""
@@ -30,9 +30,14 @@ def format_ratio(value: float) -> str:
     )
 
 
-st.title("🧩 Portfolio Composition")
-st.caption(
-    "Allocation, concentration, correlation, and asset-level risk contribution"
+page_header(
+    eyebrow="PORTFOLIO COMPOSITION",
+    title="Know exactly what you own.",
+    description=(
+        "Inspect allocation, concentration, diversification, correlation, "
+        "and each position's contribution to portfolio risk."
+    ),
+    badge="ACTIVE ALLOCATION",
 )
 
 portfolio_analytics = st.session_state.get(
@@ -96,14 +101,18 @@ summary_values = (
     (
         "Analysis period",
         (
-            f"{market_data_result.actual_start:%b %d, %Y} – "
-            f"{market_data_result.actual_end:%b %d, %Y}"
+            f"{market_data_result.actual_start:%m/%d/%y} – "
+            f"{market_data_result.actual_end:%m/%d/%y}"
         ),
     ),
 )
 
+summary_columns = st.columns(
+    [1, 1, 1, 1.65],
+)
+
 for column, (label, value) in zip(
-    st.columns(4),
+    summary_columns,
     summary_values,
 ):
     column.metric(

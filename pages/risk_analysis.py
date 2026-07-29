@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.risk import RiskCalculationError, calculate_risk_comparison
-
+from src.ui import page_header
 
 def format_percentage(value: float) -> str:
     """Format a decimal percentage or return N/A."""
@@ -23,9 +23,14 @@ def format_integer(value: float) -> str:
     return f"{int(value):,}"
 
 
-st.title("⚠️ Risk Analysis")
-st.caption(
-    "Downside risk, benchmark sensitivity, and historical tail-loss analysis"
+page_header(
+    eyebrow="RISK INTELLIGENCE",
+    title="Measure the downside before it matters.",
+    description=(
+        "Evaluate volatility, downside risk, historical tail losses, "
+        "benchmark sensitivity, and risk-adjusted performance."
+    ),
+    badge="RISK WORKSPACE",
 )
 
 portfolio_analytics = st.session_state.get("portfolio_analytics")
@@ -60,13 +65,15 @@ summary_values = (
     ("Daily returns", f"{len(portfolio_returns):,}"),
     (
         "Analysis period",
-        f"{market_data_result.actual_start:%b %d, %Y} – "
-        f"{market_data_result.actual_end:%b %d, %Y}",
+        f"{market_data_result.actual_start:%m/%d/%y} – "
+        f"{market_data_result.actual_end:%m/%d/%y}"
     ),
 )
 
+summary_columns = st.columns([1, 1, 1, 1.65])
+
 for column, (label, value) in zip(
-    st.columns(4),
+    summary_columns,
     summary_values,
 ):
     column.metric(label, value)

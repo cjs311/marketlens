@@ -3,6 +3,11 @@
 from pathlib import Path
 
 import streamlit as st
+from src.ui import (
+    inject_styles,
+    install_plotly_theme,
+    render_sidebar_brand,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -15,6 +20,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+install_plotly_theme()
+inject_styles()
+render_sidebar_brand()
 
 
 pages = {

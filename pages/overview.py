@@ -23,6 +23,7 @@ from src.validation import (
     parse_ticker_input,
     validate_date_range,
 )
+from src.ui import page_header
 
 
 @st.cache_data(
@@ -50,12 +51,14 @@ def format_percentage(value: float) -> str:
     return f"{value:+.2%}"
 
 
-st.title("📈 MarketLens")
-st.caption("Market-risk and portfolio-analytics dashboard")
-
-st.info(
-    "Day 3 adds editable portfolio weights, daily weighted returns, "
-    "and real portfolio-versus-benchmark performance analytics."
+page_header(
+    eyebrow="MARKET OVERVIEW",
+    title="See the portfolio clearly.",
+    description=(
+        "Load historical market data, configure portfolio weights, "
+        "and compare performance against your selected benchmark."
+    ),
+    badge="PRIMARY WORKSPACE",
 )
 
 today = date.today()
