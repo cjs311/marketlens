@@ -15,6 +15,7 @@ from src.portfolio import (
     PortfolioCalculationError,
     calculate_portfolio_analytics,
     create_equal_weights,
+    create_portfolio_signature,
     validate_weights,
 )
 from src.validation import (
@@ -61,8 +62,38 @@ page_header(
     badge="PRIMARY WORKSPACE",
 )
 
+overview_notice = st.session_state.pop(
+    "overview_notice",
+    None,
+)
+
+if overview_notice:
+    st.success(overview_notice)
+
 today = date.today()
 default_start = today - timedelta(days=365)
+active_config = st.session_state.get(
+    "market_data_config"
+)
+
+if active_config is None:
+    default_ticker_input = "SPY, QQQ, GLD"
+    default_benchmark_input = "SPY"
+    default_start_input = default_start
+    default_end_input = today
+else:
+    default_ticker_input = ", ".join(
+        active_config["asset_tickers"]
+    )
+    default_benchmark_input = active_config[
+        "benchmark"
+    ]
+    default_start_input = active_config[
+        "start_date"
+    ]
+    default_end_input = active_config[
+        "end_date"
+    ]
 
 st.subheader("Historical analysis setup")
 
@@ -72,7 +103,7 @@ with st.form("market_data_form"):
     with input_columns[0]:
         ticker_input = st.text_input(
             "Portfolio ticker symbols",
-            value="SPY, QQQ, GLD",
+            value=default_ticker_input,
             help=(
                 "Enter between one and ten symbols separated by commas, "
                 "spaces, or semicolons."
@@ -82,21 +113,21 @@ with st.form("market_data_form"):
     with input_columns[1]:
         start_date = st.date_input(
             "Start date",
-            value=default_start,
+            value=default_start_input,
             max_value=today,
         )
 
     with input_columns[2]:
         end_date = st.date_input(
             "End date",
-            value=today,
+            value=default_end_input,
             max_value=today,
         )
 
     with input_columns[3]:
         benchmark_input = st.text_input(
             "Benchmark",
-            value="SPY",
+            value=default_benchmark_input,
             help=(
                 "The benchmark is aligned to the same dates as the "
                 "portfolio assets."
@@ -250,13 +281,11 @@ else:
         "No dates were removed during cross-asset alignment."
     )
 
-portfolio_signature = "|".join(
-    (
-        *asset_tickers,
-        f"benchmark={benchmark}",
-        f"start={market_data_result.actual_start}",
-        f"end={market_data_result.actual_end}",
-    )
+portfolio_signature = create_portfolio_signature(
+    asset_tickers=asset_tickers,
+    benchmark=benchmark,
+    actual_start=market_data_result.actual_start,
+    actual_end=market_data_result.actual_end,
 )
 
 if (

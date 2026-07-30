@@ -1,5 +1,7 @@
 """Tests for MarketLens portfolio-performance calculations."""
 
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -7,6 +9,7 @@ from src.portfolio import (
     PortfolioCalculationError,
     calculate_portfolio_analytics,
     create_equal_weights,
+    create_portfolio_signature,
     validate_weights,
 )
 
@@ -56,6 +59,32 @@ def test_create_equal_weights() -> None:
     assert weights.sum() == pytest.approx(1.0)
     assert weights["AAA"] == pytest.approx(
         1.0 / 3.0
+    )
+
+
+def test_create_portfolio_signature() -> None:
+    """Session signatures should normalize symbols and preserve dates."""
+    signature = create_portfolio_signature(
+        asset_tickers=(
+            "spy",
+            "qqq",
+        ),
+        benchmark="spy",
+        actual_start=date(
+            2025,
+            7,
+            29,
+        ),
+        actual_end=date(
+            2026,
+            7,
+            28,
+        ),
+    )
+
+    assert signature == (
+        "SPY|QQQ|benchmark=SPY|"
+        "start=2025-07-29|end=2026-07-28"
     )
 
 

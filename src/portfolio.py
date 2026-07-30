@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,28 @@ class PortfolioAnalytics:
     comparison_returns: pd.DataFrame
     performance_index: pd.DataFrame
     metrics: pd.DataFrame
+
+
+def create_portfolio_signature(
+    asset_tickers: Sequence[str],
+    benchmark: str,
+    actual_start: date,
+    actual_end: date,
+) -> str:
+    """Return the stable session signature for one loaded dataset."""
+    symbols = tuple(
+        str(ticker).upper()
+        for ticker in asset_tickers
+    )
+
+    return "|".join(
+        (
+            *symbols,
+            f"benchmark={str(benchmark).upper()}",
+            f"start={actual_start}",
+            f"end={actual_end}",
+        )
+    )
 
 
 def create_equal_weights(

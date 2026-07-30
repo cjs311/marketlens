@@ -68,7 +68,7 @@ navigation = st.navigation(pages)
 
 with st.sidebar:
     st.divider()
-    st.caption("MarketLens MVP")
+    st.caption("MarketLens Portfolio Analytics")
     st.caption("Educational analytics — not financial advice")
 
 navigation.run()
